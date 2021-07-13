@@ -1,4 +1,4 @@
-# 中国软件杯——行人检测与跟踪（GitHub地址：https://github.com/dddlli/Swin-Transformer-Object-Detection-PaddlePaddle）
+# 中国软件杯——行人检测与跟踪
 
 ![03000202](C:\Users\Administrator\Desktop\03000202.jpg)
 
