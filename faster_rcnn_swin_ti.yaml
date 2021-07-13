@@ -1,0 +1,155 @@
+use_gpu: true
+log_iter: 10
+save_dir: output
+snapshot_epoch: 1
+
+epoch: 12
+
+LearningRate:
+  base_lr: 0.001
+  schedulers:
+  - !PiecewiseDecay
+    gamma: 0.1
+    milestones: [8, 11]
+  - !LinearWarmup
+    start_factor: 0.
+    steps: 1000
+
+OptimizerBuilder:
+  optimizer:
+    momentum: 0.9
+    type: Momentum
+  regularizer:
+    factor: 0.0001
+    type: L2
+
+
+architecture: FasterRCNN
+
+FasterRCNN:
+  backbone: SwinTransformer
+  neck: FPN
+  rpn_head: RPNHead
+  bbox_head: BBoxHead
+  # post process
+  bbox_post_process: BBoxPostProcess
+
+SwinTransformer:
+  out_indices: [0,1,2,3]
+  pretrained: https://bj.bcebos.com/v1/ai-studio-online/19a72dd9eb884f4581492a61fab901e60e858e34569f4805b619eceabd6a4315?responseContentDisposition=attachment%3B%20filename%3Dswin_tiny_patch4_window7_224.pdparams
+
+FPN:
+  out_channel: 256
+
+RPNHead:
+  anchor_generator:
+    aspect_ratios: [0.5, 1.0, 2.0]
+    anchor_sizes: [[32], [64], [128], [256], [512]]
+    strides: [4, 8, 16, 32, 64]
+  rpn_target_assign:
+    batch_size_per_im: 256
+    fg_fraction: 0.5
+    negative_overlap: 0.3
+    positive_overlap: 0.7
+    use_random: True
+  train_proposal:
+    min_size: 0.0
+    nms_thresh: 0.7
+    pre_nms_top_n: 2000
+    post_nms_top_n: 1000
+    topk_after_collect: True
+  test_proposal:
+    min_size: 0.0
+    nms_thresh: 0.7
+    pre_nms_top_n: 1000
+    post_nms_top_n: 1000
+
+
+BBoxHead:
+  head: TwoFCHead
+  roi_extractor:
+    resolution: 7
+    sampling_ratio: 0
+    aligned: True
+  bbox_assigner: BBoxAssigner
+
+BBoxAssigner:
+  batch_size_per_im: 512
+  bg_thresh: 0.5
+  fg_thresh: 0.5
+  fg_fraction: 0.25
+  use_random: True
+
+TwoFCHead:
+  out_channel: 1024
+
+BBoxPostProcess:
+  decode: RCNNBox
+  nms:
+    name: MultiClassNMS
+    keep_top_k: 100
+    score_threshold: 0.05
+    nms_threshold: 0.5
+
+worker_num: 4
+TrainReader:
+  sample_transforms:
+  - Decode: {}
+  - RandomResize: {target_size: [[640, 1333]], interp: 2, keep_ratio: True}
+  - RandomFlip: {prob: 0.5}
+  - NormalizeImage: {is_scale: true, mean: [0.485,0.456,0.406], std: [0.229, 0.224,0.225]}
+  - Permute: {}
+  batch_transforms:
+  - PadBatch: {pad_to_stride: 32, pad_gt: true}
+  batch_size: 1
+  shuffle: true
+  drop_last: true
+
+
+EvalReader:
+  sample_transforms:
+  - Decode: {}
+  - Resize: {interp: 2, target_size: [640, 1333], keep_ratio: True}
+  - NormalizeImage: {is_scale: true, mean: [0.485,0.456,0.406], std: [0.229, 0.224,0.225]}
+  - Permute: {}
+  batch_transforms:
+  - PadBatch: {pad_to_stride: 32, pad_gt: false}
+  batch_size: 1
+  shuffle: false
+  drop_last: false
+  drop_empty: false
+
+
+TestReader:
+  sample_transforms:
+  - Decode: {}
+  - Resize: {interp: 2, target_size: [640, 1333], keep_ratio: True}
+  - NormalizeImage: {is_scale: true, mean: [0.485,0.456,0.406], std: [0.229, 0.224,0.225]}
+  - Permute: {}
+  batch_transforms:
+  - PadBatch: {pad_to_stride: 32, pad_gt: false}
+  batch_size: 1
+  shuffle: false
+  drop_last: false
+
+metric: VOC
+map_type: integral
+num_classes: 1
+
+TrainDataset:
+  !VOCDataSet
+    dataset_dir: dataset/voc
+    anno_path: trainval.txt
+    label_list: label_list.txt
+    data_fields: ['image', 'gt_bbox', 'gt_class', 'difficult']
+
+EvalDataset:
+  !VOCDataSet
+    dataset_dir: dataset/voc
+    anno_path: test.txt
+    label_list: label_list.txt
+    data_fields: ['image', 'gt_bbox', 'gt_class', 'difficult']
+
+TestDataset:
+  !ImageFolder
+    anno_path: dataset/voc/label_list.txt
